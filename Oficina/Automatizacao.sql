@@ -199,7 +199,7 @@ AS $$
     end;
 $$;
 
-CREATE OR REPLACE TRIGGER tg_peca
+CREATE OR REPLACE TRIGGER tg_orcamento
     AFTER INSERT OR UPDATE OR DELETE ON orcamento
     FOR EACH ROW EXECUTE PROCEDURE atualiza_orcamento();
 

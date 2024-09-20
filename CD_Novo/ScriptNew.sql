@@ -1,3 +1,4 @@
+
 set search_path  to cd;
 
 create table if not exists cliente(

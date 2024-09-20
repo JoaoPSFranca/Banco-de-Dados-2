@@ -3,7 +3,7 @@
   <component name="SqlDialectMappings">
     <file url="file://$PROJECT_DIR$/../CD_Novo/ScriptNew.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/../Oficina/Automatizacao.sql" dialect="PostgreSQL" />
-    <file url="file://$PROJECT_DIR$/../Oficina/Massa_Teste.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/../Oficina/correcao/Script.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/../Oficina/massaTeste.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/../Oficina/oficina_script.sql" dialect="PostgreSQL" />
   </component>
