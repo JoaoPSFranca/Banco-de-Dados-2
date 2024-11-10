@@ -789,6 +789,16 @@ update emendas e
     where idtipoemenda is null;
 
 alter table emendas
+    add foreign key(idtipoemenda) references tipoemenda(idtipoemenda);
+
+alter table autor
+    add column nome varchar(150);
+
+update autor a
+    set nome = (select nomecompleto from emendas where idautor = a.idautor limit 1)
+    where idautor is null;
+
+alter table emendas
     drop column tipo_emenda;
 
 select * from emendas;
