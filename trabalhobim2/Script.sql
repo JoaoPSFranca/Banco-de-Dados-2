@@ -59,15 +59,13 @@ create table itemvenda(
 );
 
 create table resumo_diario(
-    ano             date            not null,
+    ano             integer         not null,
     lancamento      int             not null,
     datapagamento   date            not null,
     numerovenda     int             not null,
     valorrecebido   decimal(10,2)   default 0.0,
     saldododia      decimal(10,2)   not null,
-    primary key (ano, lancamento),
-    foreign key (numerovenda)
-        references venda (idvenda)
+    primary key (ano, lancamento)
 );
 
 -- Import Estado

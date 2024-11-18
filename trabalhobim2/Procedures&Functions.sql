@@ -79,18 +79,17 @@ as $$
                 on c.id_cidade = e.id_cidade
             inner join bairro b
                 on c.id_cidade = b.id_cidade
-
         where e.cep = new.cep;
 
         if (cidade_alvo is null) or (bairro_alvo is null) then
             raise exception 'CEP incorreto';
         end if;
 
-        new.nomecidade = cidade_alvo;
-        new.nomebairro = bairro_alvo;
-        new.estado = estado_alvo;
-        new.local = local_alvo;
-        new.codigoibge = ibge_alvo;
+        new.nomecidade := cidade_alvo;
+        new.nomebairro := bairro_alvo;
+        new.estado := estado_alvo;
+        new.local := local_alvo;
+        new.codigoibge := ibge_alvo;
 
         return new;
     end;
@@ -138,32 +137,41 @@ as $$
         compra numeric;
         lanc integer;
         saldo numeric;
+        total numeric;
+        res_ano integer;
     begin
-        compra := new.valortotal - old.valortotal;
+        if old.valortotal is null then
+            compra := new.valortotal;
+        else
+            compra := new.valortotal - old.valortotal;
+        end if;
 
         if (new.datapagamento is not null and old.datapagamento is null) then
-            select lancamento into lanc from resumo_diario where ano = current_date and numerovenda = new.idvenda;
+            res_ano := extract(year from new.datapagamento);
 
-            if (lanc is null) then
-                select (max(lancamento) + 1),
-                       max(saldododia)
-                into lanc, saldo
-                from resumo_diario
-                where ano = current_date;
+            select sum(valortotal) into saldo
+            from venda
+            where datapagamento = new.datapagamento;
 
-                insert into resumo_diario (ano, lancamento, datapagamento, numerovenda, saldododia)
-                values (current_date, lanc, new.datapagamento, new.idvenda, 0);
+            select (coalesce(max(lancamento), 0) + 1)
+            into lanc
+            from resumo_diario
+            where ano = res_ano;
 
-                update resumo_diario
-                set saldododia = saldo + compra
-                where ano = current_date;
-            end if;
+            insert into resumo_diario (ano, lancamento, datapagamento, numerovenda, valorrecebido, saldododia)
+            values (res_ano, lanc, new.datapagamento, new.numero, new.valortotal,saldo);
 
             compra := -(compra);
         end if;
 
+        if old.valortotal is null then
+            total := new.valortotal;
+        else
+            total := new.valortotal - old.valortotal;
+        end if;
+
         update cliente
-        set totalcomprado = totalcomprado + new.valortotal - old.valortotal,
+        set totalcomprado = totalcomprado + total,
             limitecomprafiado = limitecomprafiado - compra
         where idcliente = new.idcliente;
 
@@ -189,21 +197,6 @@ create or replace trigger tg_pos_venda
     after insert or update on venda
     for each row execute procedure pos_venda();
 
-create or replace function pre_produto()
-    returns trigger
-    language plpgsql
-as $$
-    begin
-        new.percentuallucro := ((new.precovenda - precocusto) * 100) / (new.precovenda);
-
-        return new;
-    end;
-$$;
-
-create or replace trigger tg_pre_produto
-    before insert or update on produto
-    for each row execute procedure pre_produto();
-
 create or replace function pos_item_venda()
     returns trigger
     language plpgsql
@@ -212,15 +205,24 @@ as $$
         valorItens numeric;
         quant integer;
     begin
-        quant := (new.quantidade - old.quantidade);
-        valorItens := quant * (new.valor - old.valor);
+        if old.quantidade is null then
+            quant := new.quantidade;
+        else
+            quant := (new.quantidade - old.quantidade);
+        end if;
+
+        if old.valor is null then
+            valorItens := new.valor;
+        else
+            valorItens := new.valor - old.valor;
+        end if;
 
         update venda
         set valortotal = valortotal + valorItens
         where idvenda = new.idvenda;
 
         update produto
-        set qtdeestoque = quant
+        set qtdeestoque = qtdeestoque - quant
         where idproduto = new.idproduto;
 
         return new;
@@ -231,14 +233,42 @@ create or replace trigger tg_pos_item_venda
     after insert or update on itemvenda
     for each row execute procedure pos_item_venda();
 
+create function gerarresumodiario() returns trigger
+    language plpgsql
+as $$
+    declare
+        anoAux          int;
+        numeroVendaAux  int;
+        valorRecebidoAux decimal(10,2);
+        saldoAux         decimal(10,2);
+        qtdelancamentoAux int;
+    begin
+        if(TG_OP = 'UPDATE') then
+            anoAux := extract(year from new.datapagamento);
+            numeroVendaAux := new.numero;
+            valorRecebidoAux := new.valortotal;
+            select sum(valortotal) from venda where datapagamento = new.datapagamento into saldoAux;
+
+            select coalesce(max(lancamento), 0) from resumo_diario where ano = anoAux into qtdelancamentoAux;
+            qtdelancamentoAux := qtdelancamentoAux + 1;
+
+            insert into resumo_diario (ano, lancamento, datapagamento, numerovenda, valorrecebido, saldododia)
+            values (anoAux, qtdelancamentoAux, new.datapagamento, numeroVendaAux, valorRecebidoAux, saldoAux);
+            return new;
+        end if;
+        return null;
+    end
+$$;
+
+
 create or replace procedure inserir_cliente (cli_nome text, cli_telefone text,
                                   cli_cep integer, cli_numero integer)
     language plpgsql
 as $$
-begin
-    insert into cliente(nome, telefone, cep, numero)
-    values(cli_nome, cli_telefone, cli_cep, cli_numero);
-end;
+    begin
+        insert into cliente(nome, telefone, cep, numero)
+        values(cli_nome, cli_telefone, cli_cep, cli_numero);
+    end;
 $$;
 
 create or replace procedure inserir_venda (cli_codigo integer,
@@ -247,26 +277,38 @@ create or replace procedure inserir_venda (cli_codigo integer,
     language plpgsql
 as $$
     begin
-        insert into venda (idcliente, cep, numero)
-        values (cli_codigo, ven_cep, ven_numero);
+        insert into venda (idcliente, cep, numero, datavenda)
+        values (cli_codigo, ven_cep, ven_numero, current_date);
     end;
 $$;
 
 create or replace procedure inserir_itemvenda (ven_codigo integer, pro_codigo integer,
-                                    iv_quantidade integer, iv_valor numeric)
+                                    iv_quantidade integer)
     language plpgsql
 as $$
+    declare
+        iv_valor numeric;
+        pro_valor numeric;
     begin
+        select precovenda into pro_valor from produto where idproduto = pro_codigo;
+
+        iv_valor := iv_quantidade * pro_valor;
+
         insert into itemvenda(idvenda, idproduto, quantidade, valor)
         values (ven_codigo, pro_codigo, iv_quantidade, iv_valor);
+
     end;
 $$;
 
 create or replace procedure inserir_produto (pro_estoque integer, pro_custo numeric,
-                                  pro_lucro numeric, pro_preco_venda numeric)
+                                  pro_lucro numeric)
     language plpgsql
 as $$
+    declare
+        pro_preco_venda numeric;
     begin
+        pro_preco_venda := pro_custo * ((pro_lucro / 100) + 1);
+
         insert into produto(qtdeestoque, precocusto, percentuallucro, precovenda)
         values (pro_estoque, pro_custo, pro_lucro, pro_preco_venda);
     end;
